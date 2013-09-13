@@ -1,45 +1,75 @@
 #!/usr/bin/env bash
 
-root_repo="basex"
-init_commit="Initial commit of unified BaseX repository"
+# This script merges the existing BaseX git repositories into a single one
+# The BaseX core repository is used to merge all other repositories. the
+# files from BaseX core will be first moved into a sub-directory. The other
+# repositories will be merged in sub-directories two. The transformation
+# is recorded into a single commit.
 
-core_repo_name="upstream-basex-core"
-api_repo_name="upstream-basex-api"
+# location of the new repository
+root_repo="$HOME/Development/basex/basex-merged"
 
+# sub-directories for the new projects
+core_project="basex-core"
+api_project="basex-api"
+tests_project="basex-tests"
+examples_project="basex-examples"
+
+# name of the remote basex core repository
+core_repo_name="upstream-basex"
+
+# urls of the remote base repositories
 core_repo_url="git://github.com/BaseXdb/basex.git"
 api_repo_url="git://github.com/BaseXdb/basex-api.git"
+tests_repo_url="git://github.com/BaseXdb/basex-tests.git"
+examples_repo_url="git://github.com/BaseXdb/basex-examples.git"
 
-core_repo_url="$HOME/Development/basex/basex-core"
-api_repo_url="$HOME/Development/basex/basex-api"
+#core_repo_url="$HOME/Development/basex/basex-core"
+#api_repo_url="$HOME/Development/basex/basex-api"
 
+
+# merge a git repository into the current one; arguments:
+# repo_url: url to the remote repository to merge
+# project_dir: sub-directory in which the repository will be merged
 function merge_git_tree() {
-  repo_name="$1"
-  repo_url="$2"
-  subdir="$3/"
+  repo_url="$1"
+  subdir="$2/"
+  repo_name="upstream-$2"
 
-  # add remote repository url and fetch all commits, branches, and tags
+  # add remote repository url and fetch all commits, branches, and tags (-f)
   git remote add -f "$repo_name" "$repo_url"
 
-  # prepare a merge commit
-  git merge -s ours --no-commit "$repo_name/master"
-
-  # add the files to the index
+  # add the files to the index under $subdir and checkout them (-u)
   git read-tree --prefix="$subdir" -u "$repo_name/master"
 
-  # make the merge commit
-  git commit -m "Merge $repo_url into $subdir"
+  # add the master of the repository as a merge head
+  cat ".git/refs/remotes/$repo_name/master" >> ".git/MERGE_HEAD"
+
+  git remote remove $repo_name
 
   return 0
 }
 
+
+
+
+# clean up existing directory
 rm -fR "$root_repo"
-git init "$root_repo"
+
+# clone basex core
+git clone --origin "$core_repo_name" "$core_repo_url" "$root_repo"
 cd "$root_repo"
 
-touch readme.md
-git add readme.md
-git commit -m "$init_commit"
+# move basex core into a subdirectory
+mkdir "$core_project"
+find . -maxdepth 1 | grep -v "$core_project" | grep -v ".git" | xargs -i mv {} "./$core_project"
+git add --all .
 
-merge_git_tree "$core_repo_name" "$core_repo_url" "basex-core"
-merge_git_tree "$api_repo_name" "$api_repo_url" "basex-api"
+# merge repositories
+merge_git_tree "$api_repo_url" "$api_project"
+merge_git_tree "$tests_repo_url" "$tests_project"
+merge_git_tree "$examples_repo_url" "$examples_project"
+
+# commit the merges
+git commit -m "Merged all BaseX projects into a single git repository"
 
